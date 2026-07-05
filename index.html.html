@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Quest AR - Pre-test Artificial Intelligence</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Sarabun:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: white;
+            user-select: none;
+        }
+
+        /* Mirror the video and canvas for natural interaction */
+        #webcam-video, #output-canvas {
+            transform: scaleX(-1);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        #output-canvas {
+            z-index: 2;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none; /* Let clicks pass through to canvas if needed, though we use hand tracking */
+        }
+
+        /* Interactive elements need pointer-events for mouse fallback/testing */
+        .interactive {
+            pointer-events: auto;
+        }
+
+        /* Animations */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+
+        .animate-shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .glow-correct {
+            box-shadow: 0 0 30px rgba(34, 197, 94, 0.8), inset 0 0 20px rgba(34, 197, 94, 0.5);
+            border-color: #22c55e !important;
+            background-color: rgba(20, 83, 45, 0.9) !important;
+        }
+
+        .glow-incorrect {
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.8), inset 0 0 20px rgba(239, 68, 68, 0.5);
+            border-color: #ef4444 !important;
+            background-color: rgba(127, 29, 29, 0.9) !important;
+        }
+
+        .choice-card {
+            transition: all 0.2s ease-in-out;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(8px);
+        }
+
+        .choice-card:hover, .choice-card.hovered {
+            transform: scale(1.02);
+            border-color: #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            background: rgba(30, 41, 59, 0.95);
+        }
+
+        #confetti-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Video and Canvas Background -->
+    <video id="webcam-video" autoplay playsinline></video>
+    <canvas id="output-canvas"></canvas>
+    <canvas id="confetti-canvas"></canvas>
+
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center glass-panel z-50 transition-opacity duration-500">
+            <div class="text-center max-w-3xl p-10 bg-slate-900/80 rounded-3xl border border-cyan-500/30 shadow-[0_0_50px_rgba(34,211,238,0.2)] interactive backdrop-blur-md">
+                <h1 class="text-5xl md:text-6xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 tracking-tight drop-shadow-lg">
+                    AI Quest AR
+                </h1>
+                <h2 class="text-2xl md:text-3xl font-semibold mb-6 text-cyan-200">
+                    Pre-test Artificial Intelligence
+                </h2>
+
+                <!-- Author Profile -->
+                <div class="flex flex-col items-center mb-8 relative z-10">
+                    <div class="w-32 h-32 rounded-full p-1 bg-gradient-to-r from-cyan-400 to-violet-500 shadow-[0_0_30px_rgba(34,211,238,0.6)] mb-4 transition-transform hover:scale-110 duration-300 relative">
+                        <div class="absolute inset-0 rounded-full animate-ping opacity-20 bg-cyan-400"></div>
+                        <img src="aum.png" alt="Dr.Aummi" class="w-full h-full rounded-full object-cover border-4 border-slate-900/50 relative z-10" onerror="this.src='https://placehold.co/128x128/0f172a/22d3ee?text=Dr.Aummi'">
+                    </div>
+                    <span class="text-cyan-300 font-bold tracking-widest uppercase text-sm bg-slate-900/80 px-6 py-2 rounded-full border border-cyan-500/50 shadow-[0_0_15px_rgba(34,211,238,0.3)]">
+                        by Dr.Aummi
+                    </span>
+                </div>
+
+                <p class="text-lg md:text-xl mb-10 text-slate-300 leading-relaxed px-4">
+                    เกมนี้เป็นข้อสอบก่อนเรียนรายวิชาปัญญาประดิษฐ์ จำนวน 20 ข้อ<br>
+                    เพื่อประเมินความรู้พื้นฐานก่อนเข้าสู่บทเรียน<br>
+                    <span class="text-cyan-400 font-semibold mt-4 block p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                        🕹️ ควบคุมเกมด้วย "ปลายนิ้วชี้" ผ่านกล้องเว็บแคม
+                    </span>
+                </p>
+                <button id="start-btn" class="px-10 py-5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-full text-2xl shadow-[0_0_20px_rgba(34,211,238,0.4)] transition-all transform hover:scale-105 active:scale-95 border border-cyan-400/50">
+                    เริ่มทำข้อสอบก่อนเรียน
+                </button>
+                <div id="loading-msg" class="hidden mt-4 text-yellow-400 animate-pulse font-medium">กำลังเตรียมระบบกล้องและ AI...</div>
+            </div>
+        </div>
+
+        <!-- Game Screen (Hidden initially) -->
+        <div id="game-screen" class="hidden flex-col h-full w-full">
+            
+            <!-- Header Status Bar -->
+            <div class="flex justify-between items-center p-6 glass-panel rounded-b-2xl mx-4 mt-0 shadow-lg">
+                <div class="flex flex-col">
+                    <span class="text-sm text-slate-400 uppercase font-bold tracking-wider">Score</span>
+                    <span id="score-display" class="text-4xl font-bold text-green-400">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="text-sm text-slate-400 uppercase font-bold tracking-wider">Question</span>
+                    <span id="question-progress" class="text-3xl font-bold text-white bg-slate-800 px-6 py-1 rounded-full border border-slate-600">1 / 20</span>
+                </div>
+                <div class="flex flex-col items-end">
+                    <span class="text-sm text-slate-400 uppercase font-bold tracking-wider">Time</span>
+                    <span id="timer-display" class="text-4xl font-bold text-blue-400">00:00</span>
+                </div>
+            </div>
+
+            <!-- Question Area -->
+            <div class="flex-grow flex flex-col items-center justify-center p-8">
+                <div class="w-full max-w-5xl text-center mb-10 glass-panel p-8 rounded-3xl border-t-4 border-blue-500">
+                    <h2 id="question-text" class="text-3xl md:text-5xl font-bold text-white leading-tight drop-shadow-md">
+                        กำลังโหลดคำถาม...
+                    </h2>
+                </div>
+
+                <!-- Choices Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl">
+                    <div id="choice-0" class="choice-card p-6 rounded-2xl flex items-center shadow-lg relative overflow-hidden" data-index="0">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center text-2xl font-bold text-slate-300 mr-6 shrink-0">A</div>
+                        <span id="text-0" class="text-xl md:text-2xl font-medium">ตัวเลือก A</span>
+                    </div>
+                    <div id="choice-1" class="choice-card p-6 rounded-2xl flex items-center shadow-lg relative overflow-hidden" data-index="1">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center text-2xl font-bold text-slate-300 mr-6 shrink-0">B</div>
+                        <span id="text-1" class="text-xl md:text-2xl font-medium">ตัวเลือก B</span>
+                    </div>
+                    <div id="choice-2" class="choice-card p-6 rounded-2xl flex items-center shadow-lg relative overflow-hidden" data-index="2">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center text-2xl font-bold text-slate-300 mr-6 shrink-0">C</div>
+                        <span id="text-2" class="text-xl md:text-2xl font-medium">ตัวเลือก C</span>
+                    </div>
+                    <div id="choice-3" class="choice-card p-6 rounded-2xl flex items-center shadow-lg relative overflow-hidden" data-index="3">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 flex items-center justify-center text-2xl font-bold text-slate-300 mr-6 shrink-0">D</div>
+                        <span id="text-3" class="text-xl md:text-2xl font-medium">ตัวเลือก D</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Feedback -->
+            <div class="p-6 mb-4 mx-auto max-w-3xl glass-panel rounded-full text-center">
+                <p id="feedback-text" class="text-xl font-semibold text-blue-300 flex items-center justify-center gap-3">
+                    <span class="animate-bounce">👆</span> เลื่อนปลายนิ้วชี้ไปค้างไว้ที่ตัวเลือกเพื่อตอบคำถาม
+                </p>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden absolute inset-0 flex flex-col items-center justify-center glass-panel z-50">
+            <div class="text-center max-w-3xl p-10 bg-slate-900/90 rounded-3xl border border-green-500/50 shadow-[0_0_50px_rgba(34,197,94,0.3)] interactive">
+                <h1 class="text-6xl font-bold mb-6 text-white">ทดสอบเสร็จสิ้น!</h1>
+                <p class="text-2xl text-slate-300 mb-4">คะแนนของคุณคือ</p>
+                <div class="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-8" id="final-score">
+                    100
+                </div>
+                <button onclick="location.reload()" class="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-full text-xl transition-all border border-slate-600">
+                    กลับหน้าหลัก
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const questions = [
+            {
+                question: "ข้อใดอธิบายความหมายของปัญญาประดิษฐ์ (AI) ได้ถูกต้องที่สุด",
+                choices: [
+                    "ระบบคอมพิวเตอร์ที่ใช้ในการคำนวณตัวเลขและสถิติเท่านั้น",
+                    "โปรแกรมที่ใช้สำหรับจัดเก็บและจัดการข้อมูลจำนวนมหาศาล",
+                    "ระบบที่พัฒนาให้คอมพิวเตอร์สามารถเลียนแบบความสามารถทางสติปัญญาของมนุษย์",
+                    "อุปกรณ์ฮาร์ดแวร์ที่ออกแบบมาเพื่อเชื่อมต่อเครือข่ายอินเทอร์เน็ต"
+                ],
+                answer: 2
+            },
+            {
+                question: "แนวคิดในการสร้าง 'ความฉลาดเทียม' ให้กับสิ่งไม่มีชีวิต มีเป้าหมายหลักเพื่ออะไร",
+                choices: [
+                    "เพื่อให้คอมพิวเตอร์สามารถคิด ตัดสินใจ และเรียนรู้ได้ด้วยตนเอง",
+                    "เพื่อลดขนาดของอุปกรณ์คอมพิวเตอร์ให้เล็กลง",
+                    "เพื่อเพิ่มความเร็วในการเชื่อมต่ออินเทอร์เน็ต",
+                    "เพื่อสร้างภาพกราฟิกที่มีความละเอียดสูง"
+                ],
+                answer: 0
+            },
+            {
+                question: "ในการแทนความรู้ (Knowledge Representation) โครงข่ายเชิงความหมาย (Semantic Networks) ใช้โครงสร้างแบบใด",
+                choices: [
+                    "ตารางข้อมูลแบบ 2 มิติ",
+                    "รูปแบบของกราฟที่มีโหนด (Node) และกิ่ง (Branch)",
+                    "สมการทางคณิตศาสตร์เชิงซ้อน",
+                    "รหัสผ่านที่เข้ารหัสแบบ 256-bit"
+                ],
+                answer: 1
+            },
+            {
+                question: "กระบวนทัศน์การแก้ปัญหาใน AI มักเกี่ยวข้องกับสิ่งใด",
+                choices: [
+                    "การใช้เมาส์และคีย์บอร์ดอย่างถูกวิธี",
+                    "การพิมพ์เอกสารด้วยความเร็วสูง",
+                    "การทำความสะอาดระบบปฏิบัติการ",
+                    "การค้นหาสถานะเป้าหมายจากสถานะเริ่มต้น"
+                ],
+                answer: 3
+            },
+            {
+                question: "กลวิธีการค้นหา (Search Strategies) ใน AI มีบทบาทอย่างไร",
+                choices: [
+                    "ใช้ค้นหาแนวทางหรือวิธีการแก้ปัญหาเพื่อไปสู่เป้าหมาย",
+                    "ใช้สำหรับค้นหาไวรัสคอมพิวเตอร์",
+                    "ใช้ค้นหารูปภาพในอินเทอร์เน็ตเท่านั้น",
+                    "ใช้บีบอัดไฟล์ให้มีขนาดเล็กลง"
+                ],
+                answer: 0
+            },
+            {
+                question: "ข้อใดคือการให้เหตุผลแบบนิรนัย (Deductive Reasoning)",
+                choices: [
+                    "การสรุปจากประสบการณ์ส่วนตัว",
+                    "การเดาสุ่มคำตอบ",
+                    "การอ้างอิงจากความรู้สึก",
+                    "การสรุปผลจากกฎหรือข้อเท็จจริงทั่วไปไปสู่ข้อสรุปเฉพาะเจาะจง"
+                ],
+                answer: 3
+            },
+            {
+                question: "ฟัซซีลอจิก (Fuzzy Logic) แตกต่างจากตรรกศาสตร์แบบดั้งเดิม (Boolean Logic) อย่างไร",
+                choices: [
+                    "ฟัซซีลอจิกมีเพียงค่า 0 และ 1 เท่านั้น",
+                    "ฟัซซีลอจิกจัดการกับความคลุมเครือ โดยมีค่าความจริงระหว่าง 0 ถึง 1",
+                    "ฟัซซีลอจิกใช้คำนวณตัวเลขฐานสิบหก",
+                    "ตรรกศาสตร์แบบดั้งเดิมมีความแม่นยำน้อยกว่าฟัซซีลอจิก"
+                ],
+                answer: 1
+            },
+            {
+                question: "ระบบผู้เชี่ยวชาญ (Expert System) ข้อใดที่ถูกออกแบบมาเพื่อวิเคราะห์หาสาเหตุการติดเชื้อและแนะนำยารักษา",
+                choices: [
+                    "AlphaGo",
+                    "DeepBlue",
+                    "MYCIN",
+                    "ELIZA"
+                ],
+                answer: 2
+            },
+            {
+                question: "องค์ประกอบสำคัญของระบบผู้เชี่ยวชาญ (Expert System) คืออะไร",
+                choices: [
+                    "หน้าจอมอนิเตอร์ขนาดใหญ่",
+                    "เครื่องพิมพ์สามมิติ",
+                    "ระบบระบายความร้อนประสิทธิภาพสูง",
+                    "ฐานความรู้ (Knowledge Base) และกลไกอนุมาน (Inference Engine)"
+                ],
+                answer: 3
+            },
+            {
+                question: "การวางแผน (Planning) ในปัญญาประดิษฐ์หมายถึงอะไร",
+                choices: [
+                    "การจัดตารางเวลาทำงานของพนักงาน",
+                    "การกำหนดลำดับของการกระทำเพื่อให้บรรลุเป้าหมายที่ตั้งไว้",
+                    "การออกแบบสถาปัตยกรรมคอมพิวเตอร์",
+                    "การคำนวณงบประมาณของโครงการ"
+                ],
+                answer: 1
+            },
+            {
+                question: "Machine Learning คืออะไร",
+                choices: [
+                    "การซ่อมแซมเครื่องจักรกล",
+                    "การควบคุมหุ่นยนต์ด้วยรีโมท",
+                    "การให้คอมพิวเตอร์เรียนรู้รูปแบบจากข้อมูลโดยไม่ต้องเขียนโปรแกรมสั่งงานทุกขั้นตอน",
+                    "การเขียนโปรแกรมควบคุมการทำงานของหน้าจอ"
+                ],
+                answer: 2
+            },
+            {
+                question: "ขั้นตอนใดมีความสำคัญมากที่สุดในการเตรียมข้อมูลสำหรับ Machine Learning",
+                choices: [
+                    "การทำความสะอาดข้อมูล (Data Cleaning)",
+                    "การตั้งชื่อไฟล์ข้อมูลให้สวยงาม",
+                    "การเข้ารหัสข้อมูลด้วยรหัสผ่าน",
+                    "การบีบอัดข้อมูลให้เป็นไฟล์ ZIP"
+                ],
+                answer: 0
+            },
+            {
+                question: "การทดสอบโมเดล (Model Testing) มีวัตถุประสงค์เพื่ออะไร",
+                choices: [
+                    "เพื่อเพิ่มขนาดของฐานข้อมูล",
+                    "เพื่อประเมินความแม่นยำและประสิทธิภาพของโมเดลกับข้อมูลใหม่",
+                    "เพื่อลบข้อมูลที่ซ้ำซ้อน",
+                    "เพื่อเปลี่ยนสีพื้นหลังของโปรแกรม"
+                ],
+                answer: 1
+            },
+            {
+                question: "มาตรวัดใดที่ใช้ประเมินผลลัพธ์ของโมเดลการจัดหมวดหมู่ (Classification)",
+                choices: [
+                    "ความเร็วในการดาวน์โหลด",
+                    "ปริมาณการใช้หน่วยความจำ",
+                    "ความแม่นยำ (Accuracy)",
+                    "ความสว่างของหน้าจอ"
+                ],
+                answer: 2
+            },
+            {
+                question: "Natural Language Processing (NLP) เกี่ยวข้องกับการทำงานลักษณะใด",
+                choices: [
+                    "การทำความเข้าใจและประมวลผลภาษามนุษย์",
+                    "การออกแบบวงจรอิเล็กทรอนิกส์",
+                    "การประกอบชิ้นส่วนคอมพิวเตอร์",
+                    "การวิเคราะห์โครงสร้างของโมเลกุล"
+                ],
+                answer: 0
+            },
+            {
+                question: "AI Chatbot แตกต่างจากการค้นหาข้อมูลบน Google อย่างไร",
+                choices: [
+                    "AI Chatbot ตอบกลับเป็นบทสนทนาที่ต่อเนื่องและเข้าใจบริบทได้ดีกว่า",
+                    "AI Chatbot ไม่ต้องใช้อินเทอร์เน็ต",
+                    "Google ค้นหาได้เฉพาะรูปภาพเท่านั้น",
+                    "AI Chatbot มีราคาแพงกว่า"
+                ],
+                answer: 0
+            },
+            {
+                question: "เทคโนโลยีใดที่ช่วยให้คอมพิวเตอร์สามารถจดจำใบหน้าและตรวจจับวัตถุในภาพได้",
+                choices: [
+                    "Natural Language Processing",
+                    "Computer Vision",
+                    "Expert System",
+                    "Robotic Process Automation"
+                ],
+                answer: 1
+            },
+            {
+                question: "Generative AI แตกต่างจาก AI แบบดั้งเดิมอย่างไร",
+                choices: [
+                    "Generative AI ใช้สำหรับการคำนวณทางคณิตศาสตร์เท่านั้น",
+                    "Generative AI ไม่สามารถเรียนรู้จากข้อมูลใหม่ได้",
+                    "Generative AI เน้นการวิเคราะห์ข้อมูลเชิงลึก",
+                    "Generative AI สามารถสร้างเนื้อหาใหม่ เช่น ข้อความ ภาพ เสียง หรือวิดีโอได้"
+                ],
+                answer: 3
+            },
+            {
+                question: "ข้อใดเป็นตัวอย่างของ Generative AI",
+                choices: [
+                    "โปรแกรม Microsoft Word",
+                    "โปรแกรม ChatGPT และ Midjourney",
+                    "โปรแกรมจัดการฐานข้อมูล MySQL",
+                    "โปรแกรมแอนตี้ไวรัส"
+                ],
+                answer: 1
+            },
+            {
+                question: "Prompt Engineering หมายถึงอะไร",
+                choices: [
+                    "ทักษะในการออกแบบคำสั่งเพื่อให้ AI สร้างผลลัพธ์ที่ตรงตามความต้องการ",
+                    "การออกแบบโครงสร้างของเซิร์ฟเวอร์",
+                    "การเขียนโค้ดสำหรับสร้าง AI ใหม่",
+                    "การซ่อมแซมอุปกรณ์คอมพิวเตอร์"
+                ],
+                answer: 0
+            },
+            {
+                question: "AI API มีประโยชน์อย่างไรต่อนักพัฒนาซอฟต์แวร์",
+                choices: [
+                    "ใช้สำหรับป้องกันการเจาะระบบ",
+                    "ช่วยให้นักพัฒนาสามารถเรียกใช้ความสามารถของ AI ในแอปพลิเคชันของตนเองได้ง่ายขึ้น",
+                    "ใช้สำหรับเพิ่มความเร็วอินเทอร์เน็ต",
+                    "ใช้ลบข้อมูลขยะในคอมพิวเตอร์"
+                ],
+                answer: 1
+            },
+            {
+                question: "Bias หรืออคติในระบบ AI มักเกิดจากสาเหตุใดมากที่สุด",
+                choices: [
+                    "การใช้คอมพิวเตอร์รุ่นเก่า",
+                    "ความร้อนของเซิร์ฟเวอร์",
+                    "การตั้งค่าสีหน้าจอผิดพลาด",
+                    "ข้อมูลที่ใช้ฝึกโมเดลมีความเอนเอียงหรือไม่ครอบคลุม"
+                ],
+                answer: 3
+            },
+            {
+                question: "ข้อจำกัดสำคัญประการหนึ่งของ AI ในปัจจุบันคืออะไร",
+                choices: [
+                    "ทำงานได้เฉพาะช่วงเวลากลางวัน",
+                    "ต้องการพลังงานแสงอาทิตย์ในการทำงาน",
+                    "ขาดความเข้าใจในเชิงสามัญสำนึกและบริบทที่ซับซ้อนแบบมนุษย์",
+                    "ไม่สามารถประมวลผลตัวเลขทศนิยมได้"
+                ],
+                answer: 2
+            },
+            {
+                question: "เทคโนโลยี Deepfake นำไปสู่ปัญหาด้านใดมากที่สุด",
+                choices: [
+                    "ปัญหาการใช้แบนด์วิดท์เกินกำหนด",
+                    "ปัญหาความน่าเชื่อถือของสื่อและการสร้างข้อมูลเท็จ",
+                    "ปัญหาคอมพิวเตอร์ทำงานช้าลง",
+                    "ปัญหาพื้นที่เก็บข้อมูลไม่เพียงพอ"
+                ],
+                answer: 1
+            },
+            {
+                question: "การใช้ผลลัพธ์จาก Generative AI อย่างมีความรับผิดชอบ ควรทำสิ่งใดเสมอ",
+                choices: [
+                    "ตรวจสอบความถูกต้องของข้อมูลก่อนนำไปใช้งานจริง",
+                    "คัดลอกผลลัพธ์ทั้งหมดโดยไม่ต้องแก้ไข",
+                    "ใช้สร้างข่าวปลอมเพื่อเพิ่มยอดวิจารณ์",
+                    "นำผลงานของ AI ไปอ้างว่าเป็นผลงานของตนเองทั้งหมด"
+                ],
+                answer: 0
+            },
+            {
+                question: "ข้อใดเป็นความเสี่ยงทางด้านลิขสิทธิ์จากการใช้ Generative AI",
+                choices: [
+                    "AI อาจสร้างเนื้อหาที่คล้ายคลึงกับผลงานที่มีลิขสิทธิ์ของผู้อื่น",
+                    "AI จะทำการลบไฟล์ต้นฉบับของผู้ใช้",
+                    "AI ไม่สามารถสร้างเนื้อหาที่มีลิขสิทธิ์ได้",
+                    "ลิขสิทธิ์ของผลงานทั้งหมดจะตกเป็นของ AI"
+                ],
+                answer: 0
+            },
+            {
+                question: "การประยุกต์ใช้ AI ในด้านการแพทย์ข้อใดมีความสำคัญในการวินิจฉัยโรค",
+                choices: [
+                    "การใช้ AI วิเคราะห์ภาพถ่ายทางการแพทย์เพื่อหาความผิดปกติ",
+                    "การใช้ AI นัดหมายผู้ป่วย",
+                    "การใช้ AI ควบคุมอุณหภูมิห้องผ่าตัด",
+                    "การใช้ AI พิมพ์ใบเสร็จรับเงิน"
+                ],
+                answer: 0
+            },
+            {
+                question: "การให้เหตุผลแบบอุปนัย (Inductive Reasoning) ใน AI มีลักษณะอย่างไร",
+                choices: [
+                    "การใช้กฎที่ตายตัวในการตัดสินใจ",
+                    "การอนุมานหรือสร้างกฎใหม่จากการสังเกตข้อมูลเฉพาะหรือตัวอย่าง",
+                    "การเลือกคำตอบแบบสุ่ม",
+                    "การปฏิเสธข้อเท็จจริงทั้งหมด"
+                ],
+                answer: 1
+            },
+            {
+                question: "การฝึกโมเดล (Model Training) ด้วยวิธี Supervised Learning ข้อมูลจะต้องมีลักษณะใด",
+                choices: [
+                    "ข้อมูลที่ไม่เป็นระเบียบ",
+                    "ข้อมูลที่ไม่มีป้ายกำกับ",
+                    "ข้อมูลที่เข้ารหัสทั้งหมด",
+                    "ข้อมูลที่มีป้ายกำกับหรือคำตอบที่ถูกต้องระบุไว้ (Labeled Data)"
+                ],
+                answer: 3
+            },
+            {
+                question: "ในยุคที่มีการใช้งาน AI อย่างแพร่หลาย ทักษะใดของมนุษย์ที่มีความสำคัญมากขึ้นในการทำงานร่วมกับ AI",
+                choices: [
+                    "การคิดวิเคราะห์อย่างมีวิจารณญาณ (Critical Thinking)",
+                    "การจำข้อมูลจำนวนมาก",
+                    "การพิมพ์สัมผัสด้วยความเร็วสูง",
+                    "การคำนวณทางคณิตศาสตร์ด้วยใจ"
+                ],
+                answer: 0
+            }
+        ];
+
+        // --- STATE VARIABLES ---
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let isPlaying = false;
+        let isAnimating = false;
+        let startTime = 0;
+        let timerInterval;
+
+        // Interaction state
+        let hoveredChoiceIndex = -1;
+        let hoverProgress = 0;
+        const HOVER_THRESHOLD = 20; // Frames required to register a click (~0.6 seconds at 30fps)
+        let lastHandPos = {x: 0, y: 0};
+
+        // --- AUDIO (Tone.js) ---
+        let synthSuccess, synthError;
+        
+        function initAudio() {
+            // Synth for success (bright chord)
+            synthSuccess = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "sine" },
+                envelope: { attack: 0.05, decay: 0.1, sustain: 0.3, release: 1 }
+            }).toDestination();
+            synthSuccess.volume.value = -5;
+
+            // Synth for error (Game Show Buzzer - เสียงตอนตอบผิดให้ดังและชัดเจน)
+            synthError = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "square" }, // ใช้คลื่น Square ให้เสียงกว้างและกระด้างคล้ายออด
+                envelope: { attack: 0.01, decay: 0.3, sustain: 0.1, release: 0.2 }
+            }).toDestination();
+            synthError.volume.value = 2; // ปรับเพิ่มความดัง (ดังขึ้นกว่าเดิม)
+        }
+
+        function playSuccess() {
+            if(!synthSuccess) return;
+            const now = Tone.now();
+            synthSuccess.triggerAttackRelease(["C5", "E5", "G5"], "8n", now);
+        }
+
+        function playError() {
+            if(!synthError) return;
+            const now = Tone.now();
+            // เล่นเสียงคอร์ดที่ตีกัน (Dissonant) คล้ายเสียงออดเตือนตอบผิดในเกมโชว์แบบสั้นๆ 2 ครั้ง
+            synthError.triggerAttackRelease(["B2", "C3", "C#3"], "16n", now);
+            synthError.triggerAttackRelease(["B2", "C3", "C#3"], "8n", now + 0.15);
+        }
+
+        // --- CONFETTI SYSTEM ---
+        const confettiCanvas = document.getElementById('confetti-canvas');
+        const ctxConfetti = confettiCanvas.getContext('2d');
+        let particles = [];
+        
+        function resizeCanvas() {
+            confettiCanvas.width = window.innerWidth;
+            confettiCanvas.height = window.innerHeight;
+            const outputCanvas = document.getElementById('output-canvas');
+            outputCanvas.width = window.innerWidth;
+            outputCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function createConfetti() {
+            const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#a855f7'];
+            for (let i = 0; i < 100; i++) {
+                particles.push({
+                    x: confettiCanvas.width / 2,
+                    y: confettiCanvas.height / 2,
+                    r: Math.random() * 6 + 2,
+                    dx: Math.random() * 10 - 5,
+                    dy: Math.random() * -10 - 5,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    tilt: Math.floor(Math.random() * 10) - 10,
+                    tiltAngleIncrement: (Math.random() * 0.07) + 0.05,
+                    tiltAngle: 0
+                });
+            }
+        }
+
+        function drawConfetti() {
+            ctxConfetti.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                p.tiltAngle += p.tiltAngleIncrement;
+                p.y += (Math.cos(p.tiltAngle) + 1 + p.r / 2) / 2;
+                p.x += Math.sin(p.tiltAngle) * 2;
+                p.dy += 0.1; // gravity
+                p.x += p.dx;
+                p.y += p.dy;
+
+                ctxConfetti.beginPath();
+                ctxConfetti.lineWidth = p.r;
+                ctxConfetti.strokeStyle = p.color;
+                ctxConfetti.moveTo(p.x + p.tilt + p.r, p.y);
+                ctxConfetti.lineTo(p.x + p.tilt, p.y + p.tilt + p.r);
+                ctxConfetti.stroke();
+            }
+            // Remove particles that are off screen
+            particles = particles.filter(p => p.y < confettiCanvas.height + 20);
+            if (particles.length > 0) {
+                requestAnimationFrame(drawConfetti);
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function startGame() {
+            Tone.start(); // Required by browser policy
+            initAudio();
+            
+            document.getElementById('start-btn').classList.add('hidden');
+            document.getElementById('loading-msg').classList.remove('hidden');
+
+            // Setup MediaPipe
+            initCamera();
+        }
+
+        function beginQuiz() {
+            document.getElementById('start-screen').classList.add('opacity-0');
+            setTimeout(() => {
+                document.getElementById('start-screen').classList.add('hidden');
+                document.getElementById('game-screen').classList.remove('hidden');
+                document.getElementById('game-screen').classList.add('flex');
+                isPlaying = true;
+                startTime = Date.now();
+                updateTimer();
+                timerInterval = setInterval(updateTimer, 1000);
+                loadQuestion(0);
+            }, 500);
+        }
+
+        function updateTimer() {
+            if(!isPlaying) return;
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('timer-display').innerText = `${mins}:${secs}`;
+        }
+
+        function loadQuestion(index) {
+            if (index >= questions.length) {
+                endGame();
+                return;
+            }
+
+            const q = questions[index];
+            document.getElementById('question-progress').innerText = `${index + 1} / ${questions.length}`;
+            document.getElementById('question-text').innerText = q.question;
+            
+            for (let i = 0; i < 4; i++) {
+                const el = document.getElementById(`text-${i}`);
+                const card = document.getElementById(`choice-${i}`);
+                el.innerText = q.choices[i];
+                card.className = "choice-card p-6 rounded-2xl flex items-center shadow-lg relative overflow-hidden";
+                card.style.transform = "scale(1)";
+            }
+            
+            document.getElementById('feedback-text').innerHTML = `<span class="animate-bounce">👆</span> เลื่อนปลายนิ้วชี้ไปค้างไว้ที่ตัวเลือกเพื่อตอบคำถาม`;
+            document.getElementById('feedback-text').className = "text-xl font-semibold text-blue-300 flex items-center justify-center gap-3";
+            isAnimating = false;
+        }
+
+        function selectAnswer(choiceIndex) {
+            if (isAnimating) return;
+            isAnimating = true;
+
+            const q = questions[currentQuestionIndex];
+            const isCorrect = (choiceIndex === q.answer);
+            const card = document.getElementById(`choice-${choiceIndex}`);
+            const feedbackText = document.getElementById('feedback-text');
+
+            if (isCorrect) {
+                score += 5;
+                document.getElementById('score-display').innerText = score;
+                card.classList.add('glow-correct');
+                feedbackText.innerHTML = "🎉 <span class='text-white font-bold'>ถูกต้อง!</span> (Excellent!)";
+                feedbackText.className = "text-2xl font-bold text-green-400 flex items-center justify-center gap-2 drop-shadow-md";
+                playSuccess();
+                createConfetti();
+                drawConfetti();
+            } else {
+                card.classList.add('glow-incorrect', 'animate-shake');
+                feedbackText.innerHTML = "❌ <span class='text-white font-bold'>ยังไม่ถูกต้อง</span> (Try Again)";
+                feedbackText.className = "text-2xl font-bold text-red-400 flex items-center justify-center gap-2 drop-shadow-md";
+                playError();
+            }
+
+            // Move to next question after delay
+            setTimeout(() => {
+                currentQuestionIndex++;
+                loadQuestion(currentQuestionIndex);
+            }, 1200);
+        }
+
+        function endGame() {
+            isPlaying = false;
+            clearInterval(timerInterval);
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('flex');
+            document.getElementById('result-screen').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            
+            if(score >= 80) playSuccess();
+        }
+
+        // --- MEDIAPIPE INTEGRATION ---
+        const videoElement = document.getElementById('webcam-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        let cameraActive = false;
+
+        function onResults(results) {
+            // Draw Hand Skeleton
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw skeleton connections
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(255, 255, 255, 0.4)', lineWidth: 3});
+                drawLandmarks(canvasCtx, landmarks, {color: 'rgba(59, 130, 246, 0.5)', lineWidth: 1, radius: 2});
+
+                // Get Index Finger Tip (Landmark 8)
+                const indexTip = landmarks[8];
+                
+                // IMPORTANT: Calculate screen coordinates considering mirrored video
+                // MediaPipe gives normalized coords (0-1). 
+                // Since canvas is mirrored via CSS scaleX(-1), to map correctly we invert X visually, 
+                // BUT for UI intersection testing, we need the actual screen position.
+                // Because the video/canvas is flipped, a hand on the physical right appears on the left.
+                // The landmark X is relative to the original image. 
+                // Mirrored Screen X = (1 - landmark.x) * innerWidth
+                const pointerX = (1 - indexTip.x) * window.innerWidth;
+                const pointerY = indexTip.y * window.innerHeight;
+                
+                // Draw Glowing Ring at Index Finger Tip on canvas
+                // We draw it at the mirrored coordinate on the canvas (since canvas is also CSS flipped, we draw at normal X)
+                const canvasDrawX = indexTip.x * canvasElement.width;
+                const canvasDrawY = indexTip.y * canvasElement.height;
+                
+                canvasCtx.beginPath();
+                canvasCtx.arc(canvasDrawX, canvasDrawY, 15, 0, 2 * Math.PI);
+                canvasCtx.strokeStyle = '#3b82f6';
+                canvasCtx.lineWidth = 4;
+                canvasCtx.shadowBlur = 20;
+                canvasCtx.shadowColor = '#60a5fa';
+                canvasCtx.stroke();
+                
+                // Draw inner dot
+                canvasCtx.beginPath();
+                canvasCtx.arc(canvasDrawX, canvasDrawY, 4, 0, 2 * Math.PI);
+                canvasCtx.fillStyle = '#ffffff';
+                canvasCtx.fill();
+                canvasCtx.shadowBlur = 0; // reset
+
+                // Collision Detection for game interaction
+                checkInteraction(pointerX, pointerY);
+            } else {
+                // Hand lost, reset interaction
+                resetHover();
+            }
+            canvasCtx.restore();
+        }
+
+        function checkInteraction(x, y) {
+            if (!isPlaying || isAnimating) return;
+
+            let currentHover = -1;
+
+            // Check intersection with choices
+            for (let i = 0; i < 4; i++) {
+                const card = document.getElementById(`choice-${i}`);
+                const rect = card.getBoundingClientRect();
+                
+                // Add a small padding to rect for easier selection
+                const padding = 10;
+                if (x >= rect.left - padding && x <= rect.right + padding &&
+                    y >= rect.top - padding && y <= rect.bottom + padding) {
+                    currentHover = i;
+                    break;
+                }
+            }
+
+            if (currentHover !== -1) {
+                // Hand is over a card
+                if (hoveredChoiceIndex === currentHover) {
+                    hoverProgress++;
+                    // Visual feedback for hovering (scale and border)
+                    document.getElementById(`choice-${currentHover}`).classList.add('hovered');
+                    
+                    // Trigger click if threshold reached
+                    if (hoverProgress >= HOVER_THRESHOLD) {
+                        selectAnswer(currentHover);
+                        resetHover();
+                    }
+                } else {
+                    // Changed card
+                    resetHover();
+                    hoveredChoiceIndex = currentHover;
+                }
+            } else {
+                // Hand is not over any card
+                resetHover();
+            }
+        }
+
+        function resetHover() {
+            if (hoveredChoiceIndex !== -1) {
+                const card = document.getElementById(`choice-${hoveredChoiceIndex}`);
+                if (card) card.classList.remove('hovered');
+            }
+            hoveredChoiceIndex = -1;
+            hoverProgress = 0;
+        }
+
+        function initCamera() {
+            const hands = new Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+            
+            hands.onResults(onResults);
+
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                    if (!cameraActive) {
+                        cameraActive = true;
+                        beginQuiz(); // Start quiz once first frame is processed
+                    }
+                },
+                width: 1280,
+                height: 720
+            });
+            
+            camera.start().catch(err => {
+                console.error("Camera Error:", err);
+                alert("ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องเว็บแคม");
+                document.getElementById('loading-msg').innerText = "เกิดข้อผิดพลาดในการเปิดกล้อง กรุณารีเฟรชหน้าเว็บ";
+            });
+        }
+
+        // Event Listeners
+        document.getElementById('start-btn').addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
